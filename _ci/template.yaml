@@ -1,0 +1,135 @@
+# 服务配置
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: $CI_PROJECT_NAME
+    deploy_time: "111"
+    version: "$CI_COMMIT_SHORT_SHA"
+  name: $CI_PROJECT_NAME
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: $CI_PROJECT_NAME
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: $CI_PROJECT_NAME
+        version: "$CI_COMMIT_SHORT_SHA"
+        deploy_time: "111"
+      annotations:
+        # 日志回收配置（标准输出版）
+        # https://wiki.avlyun.org/pages/viewpage.action?pageId=131785727&adc_code=1072
+        co.elastic.logs/enabled: "false"
+        # co.elastic.logs/json.add_error_key: "true"
+        # co.elastic.logs/json.ignore_decoding_error: "true"
+        # co.elastic.logs/json.keys_under_root: "false"
+        # 下面这句是配置要输出的index名称的，
+        # 比如你配置为 aaa, 那么实际写入 es 的 index 将是 k8s-aaa-*
+        # 这个 index 需要和运维申请开通
+        # co.elastic.logs/processors.add_fields.fields.index: hw-nfpolicy-updater
+        # co.elastic.logs/processors.timestamp.field: json.time
+        # co.elastic.logs/processors.timestamp.layouts: UNIX_MS
+        # co.elastic.logs/processors.timestamp.timezone: Asia/Shanghai
+    spec:
+      containers:
+        - name: $CI_PROJECT_NAME
+          # 从 configMap 中获取环境变量配置
+          envFrom:
+            - configMapRef:
+                name: $CI_PROJECT_NAME
+          # 镜像相关配置
+          image: $CONTAINER_IMAGE
+          imagePullPolicy: Always
+          # 端口暴露配置
+          ports:
+            - name: 8080tcp
+              containerPort: 8080
+              protocol: TCP
+          # 健康检查配置
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            successThreshold: 1
+            tcpSocket:
+              port: 8080
+            timeoutSeconds: 2
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 2
+            tcpSocket:
+              port: 8080
+            timeoutSeconds: 2
+          # 资源限制配置
+          resources:
+            limits:
+              cpu: 200m
+              memory: 200Mi
+            requests:
+              cpu: 200m
+              memory: 200Mi
+          volumeMounts:
+            - mountPath: /etc/localtime
+              name: host-time
+              readOnly: true
+      restartPolicy: Always
+      # 存储挂载配置（localhost）
+      volumes:
+        - name: host-time
+          hostPath:
+            path: /etc/localtime
+            type: ""
+---
+# service 服务发现及四层配置
+apiVersion: v1
+kind: Service
+metadata:
+  name: $CI_PROJECT_NAME
+spec:
+  ports:
+    - name: 8080tcp
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: $CI_PROJECT_NAME
+  sessionAffinity: None
+  type: ClusterIP
+---
+# ingress 七层配置
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: $CI_PROJECT_NAME
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 3000m
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "1200"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "1200"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "1200"
+spec:
+  rules:
+    - host: $CI_PROJECT_NAME.dev.k8ss.cc
+      http:
+        paths:
+          - backend:
+              serviceName: $CI_PROJECT_NAME
+              servicePort: 80
+---
+# 环境变量配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $CI_PROJECT_NAME
+data:
+  API: your project api url
+  environment: development
