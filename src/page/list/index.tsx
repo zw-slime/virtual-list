@@ -13,11 +13,12 @@ export const List: FC = () => {
   // 容器的高度
   const [containerHeight,setContainerHeight] = useState(600)
   // 列表项的高度
-  const [itemHeight,setItemHeight] = useState(30)
+  const [itemHeight,setItemHeight] = useState(50)
 
   // 实际的滚动高度
   const [realHeight,setRealHeight] = useState(0)
 
+  const startOffset = useRef(0)
 
   // 一列显示多少个
   const [num,setNum] = useState<number>(0)
@@ -30,16 +31,18 @@ export const List: FC = () => {
 
   const [newData,setNewData] = useState<number[]>([])
 
-  const scrollDom = useRef<HTMLElement>(null)
+
 
 
   const onWheel = useCallback((event:WheelEvent) => {
     const scrollTop = event?.currentTarget?.scrollTop;
-    const last = Math.ceil(scrollTop/itemHeight)
-    lastIndex.current = Math.min(lastIndex.current+last, 0)
-    nextIndex.current = Math.max(nextIndex.current+last, 20-1)
+    startOffset.current = scrollTop  - (scrollTop % itemHeight);
+    console.log(scrollTop)
+    const last = Math.floor(scrollTop/itemHeight)
+    lastIndex.current = last
+    nextIndex.current = last + num
     setNewData(data.current.slice(lastIndex.current,nextIndex.current))
-  },[lastIndex,nextIndex,data])
+  },[lastIndex,nextIndex,data,num])
 
 
   useEffect(() => {
@@ -53,7 +56,7 @@ export const List: FC = () => {
   },[itemHeight,data])
 
   useEffect(() => {
-    const n = Math.floor(containerHeight/itemHeight)
+    const n = Math.ceil(containerHeight/itemHeight)
     setNum(n);
     nextIndex.current = n;
   },[containerHeight,itemHeight])
@@ -68,11 +71,12 @@ export const List: FC = () => {
   }
   }>
     <div className={styles.scrollBox} style={{height:realHeight+'px' }} >
-      <div className={styles.item} >
+      <div style={{transform: `translate3d(0,${startOffset.current}px,0)`}}>
         {newData.map((v) => {
           return (<div key={v} style={{height:itemHeight+'px'}}>{v}</div>)
         })}
       </div>
+
     </div>
   </div>
 }
